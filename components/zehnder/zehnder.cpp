@@ -128,6 +128,10 @@ void ZehnderRF::setup() {
   // Write config back
   this->rf_->updateConfig(&rfConfig);
   this->rf_->writeTxAddress(0x89816EA9);
+  
+  // Ensure radio is in a known state
+  this->rf_->setMode(nrf905::Idle);
+  delay(50);  // Short delay for stability
 
   this->speed_count_ = 4;
 
@@ -721,6 +725,20 @@ void ZehnderRF::discoveryStart(const uint8_t deviceId) {
   this->config_.fan_my_device_type = FAN_TYPE_REMOTE_CONTROL;
   this->config_.fan_my_device_id = deviceId;
 
+  // Reset radio to ensure clean state
+  this->rf_->setMode(nrf905::Idle);
+  delay(100);  // Allow radio to settle
+
+  // Set RX and TX address to network link ID
+  rfConfig = this->rf_->getConfig();
+  rfConfig.rx_address = NETWORK_LINK_ID;
+  this->rf_->updateConfig(&rfConfig, NULL);
+  this->rf_->writeTxAddress(NETWORK_LINK_ID, NULL);
+  
+  // Ensure we're in receive mode before transmitting
+  this->rf_->setMode(nrf905::Receive);
+  delay(50);
+
   // Build frame
   (void) memset(this->_txFrame, 0, FAN_FRAMESIZE);  // Clear frame data
 
@@ -734,13 +752,7 @@ void ZehnderRF::discoveryStart(const uint8_t deviceId) {
   pFrame->parameter_count = sizeof(RfPayloadNetworkJoinAck);
   pFrame->payload.networkJoinAck.networkId = NETWORK_LINK_ID;
 
-  // Set RX and TX address
-  rfConfig = this->rf_->getConfig();
-  rfConfig.rx_address = NETWORK_LINK_ID;
-  this->rf_->updateConfig(&rfConfig, NULL);
-  this->rf_->writeTxAddress(NETWORK_LINK_ID, NULL);
-
-  this->startTransmit(this->_txFrame, FAN_TX_RETRIES, [this]() {
+  this->startTransmit(this->_txFrame, FAN_TX_RETRIES * 2, [this]() {  // Double the retries for discovery
     ESP_LOGW(TAG, "Start discovery timeout");
     this->state_ = StateStartDiscovery;
   });
@@ -762,11 +774,15 @@ Result ZehnderRF::startTransmit(const uint8_t *const pData, const int8_t rxRetri
     this->onReceiveTimeout_ = callback;
     this->retries_ = rxRetries;
 
+    // Put radio in idle mode to prepare for transmission
+    this->rf_->setMode(nrf905::Idle);
+
     // Write data to RF
-    // if (pData != NULL) {  // If frame given, load it in the nRF. Else use previous TX payload
-    // ESP_LOGD(TAG, "Write payload");
-    this->rf_->writeTxPayload(pData, FAN_FRAMESIZE);  // Use framesize
-    // }
+    ESP_LOGD(TAG, "Writing payload to RF transmitter");
+    this->rf_->writeTxPayload(pData, FAN_FRAMESIZE);
+    
+    // Short delay for RF to become stable after payload is written
+    delay(10);
 
     this->rfState_ = RfStateWaitAirwayFree;
     this->airwayFreeWaitTime_ = millis();
@@ -794,10 +810,16 @@ void ZehnderRF::rfHandler(void) {
           this->onReceiveTimeout_();
         }
       } else if (this->rf_->airwayBusy() == false) {
-        ESP_LOGD(TAG, "Start TX");
+        // Add a random delay before transmission to avoid collisions with other devices
+        delay(random_uint32() % 100 + 50);  // Random delay between 50-150ms
+        
+        ESP_LOGD(TAG, "Airway free, starting transmission");
         this->rf_->startTx(FAN_TX_FRAMES, nrf905::Receive);  // After transmit, wait for response
 
         this->rfState_ = RfStateTxBusy;
+      } else {
+        // If airway is busy, add a short delay before checking again
+        delay(10);
       }
       break;
 
@@ -812,8 +834,8 @@ void ZehnderRF::rfHandler(void) {
           --this->retries_;
           ESP_LOGD(TAG, "No data received, retry again (left: %u)", this->retries_);
 
-          // Add a short delay between retries
-          delay(150);
+          // Add a short random delay between retries to avoid transmission collisions
+          delay(random_uint32() % 200 + 150);  // Random delay between 150-350ms
 
           this->rfState_ = RfStateWaitAirwayFree;
           this->airwayFreeWaitTime_ = millis();
