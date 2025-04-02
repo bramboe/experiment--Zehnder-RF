@@ -63,6 +63,16 @@ api:
         - delay: 2s
         - lambda: |-
             ESP.restart();
+    # New service to force an immediate update of all Zehnder information
+    - service: query_all_data
+      then:
+        - logger.log:
+            level: INFO
+            format: "Querying all Zehnder data"
+        - lambda: |-
+            id(${device_id}_ventilation).queryDevice();
+            id(${device_id}_ventilation).queryErrorStatus();
+            id(${device_id}_ventilation).queryFilterStatus();
 
 ota:
 - platform: esphome
@@ -232,7 +242,7 @@ button:
 
 # Load external components
 external_components:
-  - source: github://bramboe/ESPHome-Zehnder-RF
+  - source: github://bramboe/experiment--Zehnder-RF
     components: [ nrf905, zehnder ]
     refresh: 0s  # Disable auto refresh to ensure version stability
 
@@ -268,6 +278,19 @@ fan:
     name: "${device_name} Ventilation"
     nrf905: nrf905_rf
     update_interval: "15s"
+    # Added filter and error sensors to capture all Zehnder information
+    filter_remaining:
+      name: "${device_name} Filter Remaining"
+      id: ${device_id}_filter_remaining
+    filter_runtime:
+      name: "${device_name} Filter Runtime"
+      id: ${device_id}_filter_runtime
+    error_count:
+      name: "${device_name} Error Count"
+      id: ${device_id}_error_count
+    error_code:
+      name: "${device_name} Error Code"
+      id: ${device_id}_error_code
     on_speed_set:
       - sensor.template.publish:
           id: ${device_id}_ventilation_percentage
