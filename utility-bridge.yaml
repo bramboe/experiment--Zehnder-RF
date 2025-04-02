@@ -14,7 +14,7 @@ esp32:
 
 # Enable logging
 logger:
-  level: INFO # Keep default level for other components
+  level: VERY_VERBOSE # Set global level to VERY_VERBOSE
   logs:
     zehnder: VERY_VERBOSE
     nrf905: VERY_VERBOSE
