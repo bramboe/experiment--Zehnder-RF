@@ -86,73 +86,10 @@ void ZehnderRF::control(const fan::FanCall &call) {
 }
 
 void ZehnderRF::setup() {
-  ESP_LOGCONFIG(TAG, "ZEHNDER '%s':", this->get_name().c_str());
+  ESP_LOGCONFIG(TAG, "ZEHNDER '%s': (Setup TEMPORARILY GUTTED for stability test)", this->get_name().c_str());
 
-  // Clear config
-  memset(&this->config_, 0, sizeof(Config));
-
-  uint32_t hash = fnv1_hash("zehnderrf");
-  this->pref_ = global_preferences->make_preference<Config>(hash, true);
-  if (this->pref_.load(&this->config_)) {
-    ESP_LOGD(TAG, "Config load ok");
-  }
-
-  // Set nRF905 config
-  nrf905::Config rfConfig;
-  rfConfig = this->rf_->getConfig();
-
-  rfConfig.band = true;
-  rfConfig.channel = 118;
-
-  // // CRC 16
-  rfConfig.crc_enable = true;
-  rfConfig.crc_bits = 16;
-
-  // // TX power 10
-  rfConfig.tx_power = 10;
-
-  // // RX power normal
-  rfConfig.rx_power = nrf905::PowerNormal;
-
-  rfConfig.rx_address = 0x89816EA9;  // ZEHNDER_NETWORK_LINK_ID;
-  rfConfig.rx_address_width = 4;
-  rfConfig.rx_payload_width = 16;
-
-  rfConfig.tx_address_width = 4;
-  rfConfig.tx_payload_width = 16;
-
-  rfConfig.xtal_frequency = 16000000;  // defaults for now
-  rfConfig.clkOutFrequency = nrf905::ClkOut500000;
-  rfConfig.clkOutEnable = false;
-
-  // Write config back
-  this->rf_->updateConfig(&rfConfig);
-  this->rf_->writeTxAddress(0x89816EA9);
-  
-  // Ensure radio is in a known state
-  this->rf_->setMode(nrf905::Idle);
-
-  this->speed_count_ = 4;
-
-  this->lastFilterQuery_ = 0;
-  this->lastErrorQuery_ = 0;
-
-  this->rf_->setOnTxReady([this](void) {
-    ESP_LOGD(TAG, "Tx Ready");
-    if (this->rfState_ == RfStateTxBusy) {
-      if (this->retries_ >= 0) {
-        this->msgSendTime_ = millis();
-        this->rfState_ = RfStateRxWait;
-      } else {
-        this->rfState_ = RfStateIdle;
-      }
-    }
-  });
-
-  this->rf_->setOnRxComplete([this](const uint8_t *const pData, const uint8_t dataLength) {
-    ESP_LOGV(TAG, "Received frame");
-    this->rfHandleReceived(pData, dataLength);
-  });
+  // Set a default state to prevent issues if loop is ever re-enabled partially
+  this->state_ = StateIdle;
 }
 
 void ZehnderRF::dump_config(void) {
@@ -180,6 +117,7 @@ void ZehnderRF::dump_config(void) {
 }
 
 void ZehnderRF::loop(void) {
+  /* --- Start of Gutted Code ---
   uint8_t deviceId;
   nrf905::Config rfConfig;
 
@@ -236,7 +174,7 @@ void ZehnderRF::loop(void) {
       break;
 
     case StateIdle:
-      /* Temporarily commented out for stability testing
+      // Temporarily commented out for stability testing
       if ((millis() - this->lastFanQuery_) >= this->interval_) {
         // Time to send a new query
         this->queryDevice();
@@ -251,7 +189,7 @@ void ZehnderRF::loop(void) {
       if ((millis() - this->lastErrorQuery_) >= 300000) {  // 5 minutes = 300000 ms
         this->queryErrorStatus();
       }
-      */
+      
       
       // Check and apply any new speed settings
       if (this->newSetting) {
@@ -263,6 +201,7 @@ void ZehnderRF::loop(void) {
     default:
       break;
   }
+  --- End of Gutted Code --- */
 }
 
 void ZehnderRF::queryErrorStatus(void) {
