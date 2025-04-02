@@ -697,9 +697,6 @@ void ZehnderRF::setSpeed(const uint8_t paramSpeed, const uint8_t paramTimer) {
       pFrame->payload.setTimer.timer = timer;
     }
 
-    ESP_LOGD(TAG, "Waiting for initial RF stabilization...");
-    delay(500);  // Wait 500ms for RF to stabilize
-
     this->startTransmit(this->_txFrame, FAN_TX_RETRIES, [this]() {
       ESP_LOGW(TAG, "Set speed timeout");
       this->state_ = StateIdle;
@@ -820,6 +817,7 @@ void ZehnderRF::rfHandler(void) {
           // If airway is busy, schedule the next check shortly
           ESP_LOGV(TAG, "Airway busy, waiting...");
           next_airway_check = millis() + 50; // Check again in 50ms
+          yield(); // Allow other tasks to run
         }
       }
       break;
@@ -856,6 +854,7 @@ void ZehnderRF::rfHandler(void) {
         } else {
            // Not timed out yet, schedule next check
            next_retry_time = millis() + 50; // Check again in 50ms
+           yield(); // Allow other tasks to run
         }
       }
       break;
