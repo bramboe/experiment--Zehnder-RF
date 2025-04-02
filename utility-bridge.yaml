@@ -269,11 +269,11 @@ external_components:
     components: [ nrf905, zehnder ]
     refresh: 0s  # Disable auto refresh to ensure version stability
 
-# SPI
-spi:
-  clk_pin: GPIO14
-  mosi_pin: GPIO13
-  miso_pin: GPIO12
+# SPI - TEMPORARILY COMMENTED OUT FOR STABILITY TEST
+# spi:
+#   clk_pin: GPIO14
+#   mosi_pin: GPIO13
+#   miso_pin: GPIO12
 
 # nRF905 config - TEMPORARILY COMMENTED OUT FOR STABILITY TEST
 # nrf905:
