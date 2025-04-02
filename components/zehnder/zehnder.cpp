@@ -131,7 +131,6 @@ void ZehnderRF::setup() {
   
   // Ensure radio is in a known state
   this->rf_->setMode(nrf905::Idle);
-  delay(50);  // Short delay for stability
 
   this->speed_count_ = 4;
 
@@ -727,7 +726,6 @@ void ZehnderRF::discoveryStart(const uint8_t deviceId) {
 
   // Reset radio to ensure clean state
   this->rf_->setMode(nrf905::Idle);
-  delay(100);  // Allow radio to settle
 
   // Set RX and TX address to network link ID
   rfConfig = this->rf_->getConfig();
@@ -737,7 +735,6 @@ void ZehnderRF::discoveryStart(const uint8_t deviceId) {
   
   // Ensure we're in receive mode before transmitting
   this->rf_->setMode(nrf905::Receive);
-  delay(50);
 
   // Build frame
   (void) memset(this->_txFrame, 0, FAN_FRAMESIZE);  // Clear frame data
@@ -781,9 +778,6 @@ Result ZehnderRF::startTransmit(const uint8_t *const pData, const int8_t rxRetri
     ESP_LOGD(TAG, "Writing payload to RF transmitter");
     this->rf_->writeTxPayload(pData, FAN_FRAMESIZE);
     
-    // Short delay for RF to become stable after payload is written
-    delay(10);
-
     this->rfState_ = RfStateWaitAirwayFree;
     this->airwayFreeWaitTime_ = millis();
   }
@@ -797,61 +791,71 @@ void ZehnderRF::rfComplete(void) {
 }
 
 void ZehnderRF::rfHandler(void) {
+  static uint32_t next_airway_check = 0;
+  static uint32_t next_retry_time = 0;
+
   switch (this->rfState_) {
     case RfStateIdle:
       break;
 
     case RfStateWaitAirwayFree:
-      if ((millis() - this->airwayFreeWaitTime_) > 5000) {
-        ESP_LOGW(TAG, "Airway too busy, giving up");
-        this->rfState_ = RfStateIdle;
+      // Check airway periodically without blocking
+      if (millis() >= next_airway_check) {
+         if ((millis() - this->airwayFreeWaitTime_) > 5000) { // Timeout check
+           ESP_LOGW(TAG, "Airway too busy, giving up");
+           this->rfState_ = RfStateIdle;
 
-        if (this->onReceiveTimeout_ != NULL) {
-          this->onReceiveTimeout_();
+           if (this->onReceiveTimeout_ != NULL) {
+             this->onReceiveTimeout_();
+           }
+           // Reset state immediately
+           break;
+         } 
+
+        if (this->rf_->airwayBusy() == false) {
+          ESP_LOGD(TAG, "Airway free, starting transmission");
+          this->rf_->startTx(FAN_TX_FRAMES, nrf905::Receive);  // After transmit, wait for response
+          this->rfState_ = RfStateTxBusy;
+        } else {
+          // If airway is busy, schedule the next check shortly
+          ESP_LOGV(TAG, "Airway busy, waiting...");
+          next_airway_check = millis() + 50; // Check again in 50ms
         }
-      } else if (this->rf_->airwayBusy() == false) {
-        // Add a random delay before transmission to avoid collisions with other devices
-        delay(random_uint32() % 100 + 50);  // Random delay between 50-150ms
-        
-        ESP_LOGD(TAG, "Airway free, starting transmission");
-        this->rf_->startTx(FAN_TX_FRAMES, nrf905::Receive);  // After transmit, wait for response
-
-        this->rfState_ = RfStateTxBusy;
-      } else {
-        // If airway is busy, add a short delay before checking again
-        delay(10);
       }
       break;
 
     case RfStateTxBusy:
+      // Waiting for TX completion handled by onTxReady callback
       break;
 
     case RfStateRxWait:
-      if ((this->retries_ >= 0) && ((millis() - this->msgSendTime_) > FAN_REPLY_TIMEOUT)) {
-        ESP_LOGD(TAG, "Receive timeout");
+      if ((this->retries_ >= 0) && (millis() >= next_retry_time)) { 
+        // Check if actual timeout occurred based on msgSendTime_
+        if ((millis() - this->msgSendTime_) > FAN_REPLY_TIMEOUT) {
+           ESP_LOGD(TAG, "Receive timeout");
 
-        if (this->retries_ > 0) {
-          --this->retries_;
-          ESP_LOGD(TAG, "No data received, retry again (left: %u)", this->retries_);
+           if (this->retries_ > 0) {
+             --this->retries_;
+             ESP_LOGD(TAG, "No data received, retry again (left: %u)", this->retries_);
 
-          // Add a short random delay between retries to avoid transmission collisions
-          delay(random_uint32() % 200 + 150);  // Random delay between 150-350ms
+             // Schedule next attempt after a short non-blocking delay
+             this->rfState_ = RfStateWaitAirwayFree; // Go back to checking airway before retry
+             this->airwayFreeWaitTime_ = millis(); // Reset airway timer
+             next_airway_check = millis() + 150 + (random_uint32() % 200); // Wait 150-350ms before checking airway for retry
 
-          this->rfState_ = RfStateWaitAirwayFree;
-          this->airwayFreeWaitTime_ = millis();
-        } else if (this->retries_ == 0) {
-          // Oh oh, ran out of options
+           } else { // retries_ == 0
+             // Oh oh, ran out of options
+             ESP_LOGD(TAG, "No messages received, giving up now...");
+             if (this->onReceiveTimeout_ != NULL) {
+               this->onReceiveTimeout_();
+             }
 
-          ESP_LOGD(TAG, "No messages received, giving up now...");
-          if (this->onReceiveTimeout_ != NULL) {
-            this->onReceiveTimeout_();
-          }
-
-          // Add a longer delay before moving to idle
-          delay(250);
-
-          // Back to idle
-          this->rfState_ = RfStateIdle;
+             // Back to idle
+             this->rfState_ = RfStateIdle;
+           }
+        } else {
+           // Not timed out yet, schedule next check
+           next_retry_time = millis() + 50; // Check again in 50ms
         }
       }
       break;
