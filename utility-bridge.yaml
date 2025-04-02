@@ -239,6 +239,23 @@ button:
       then:
         - lambda: |-
             ${device_id}_ventilation->setSpeed(4, 60);
+  # Add a button to force discovery
+  - platform: template
+    id: ${device_id}_force_discovery
+    name: ${device_name} Force Discovery
+    icon: mdi:antenna
+    on_press:
+      then:
+        - logger.log:
+            level: INFO
+            format: "Forcing discovery process"
+        - lambda: |-
+            // Force discovery by resetting pairing data
+            ESP_LOGI("zehnder", "Forcing pairing reset");
+            global_preferences->reset();
+        - delay: 2s
+        - lambda: |-
+            ESP.restart();
 
 # Load external components
 external_components:
@@ -270,6 +287,9 @@ interval:
       - logger.log:
           level: INFO
           format: "nRF905 initialization check"
+      - logger.log:
+          level: DEBUG
+          format: "NRF905 state check - network ID: 0x%08X", id(${device_id}_ventilation).config_.fan_networkId
 
 # The FAN controller
 fan:
