@@ -94,17 +94,14 @@ class ZehnderRF : public Component, public fan::Fan {
 
   void setSpeed(const uint8_t speed, const uint8_t timer = 0);
 
+  bool timer;
+  int voltage;
+
+ protected:
   void queryDevice(void);
   void queryErrorStatus(void);
   void queryFilterStatus(void);
 
-  bool timer;
-  int voltage;
-
-  // Getter for network ID - needed for debugging
-  uint32_t getNetworkId() const { return this->config_.fan_networkId; }
-
- protected:
   uint8_t createDeviceID(void);
   void discoveryStart(const uint8_t deviceId);
 
