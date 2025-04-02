@@ -199,51 +199,58 @@ void ZehnderRF::loop(void) {
 
           rfConfig = this->rf_->getConfig();
           rfConfig.rx_address = this->config_.fan_networkId;
-          this->rf_->updateConfig(&rfConfig);
-          this->rf_->writeTxAddress(this->config_.fan_networkId);
+          this->rf_->updateConfig(&rfConfig, NULL);
+          this->rf_->writeTxAddress(this->config_.fan_networkId, NULL);
 
-          // Start with query
-          this->queryDevice();
+          this->state_ = StateIdle;
+          this->lastFanQuery_ = 0;  // Force immediate query on startup
+          this->lastFilterQuery_ = 0; // Force immediate filter query
+          this->lastErrorQuery_ = 0;  // Force immediate error query
         }
       }
       break;
 
     case StateStartDiscovery:
-      deviceId = this->createDeviceID();
-      this->discoveryStart(deviceId);
+      ESP_LOGD(TAG, "Starting discovery");
 
-      // For now just set TX
+      // Connect receiver to network link id
+      rfConfig = this->rf_->getConfig();
+      rfConfig.rx_address = NETWORK_LINK_ID;
+      this->rf_->updateConfig(&rfConfig, NULL);
+      this->rf_->writeTxAddress(NETWORK_LINK_ID, NULL);
+      // this->rf_->startReceive();
+      this->rf_->setRxMode();
+
+      // Keep generating different IDs to prevent collision with
+      // other devices also looking for a main unit
+      deviceId = this->createDeviceID();
+
+      // Start discovery
+      this->discoveryStart(deviceId);
       break;
 
-    case StateWaitSetSpeedConfirm:
-      if (this->rfState_ == RfStateIdle) {
-        // When done, return to idle
-        this->state_ = StateIdle;
+    case StateIdle:
+      if ((millis() - this->lastFanQuery_) >= this->interval_) {
+        // Time to send a new query
+        this->queryDevice();
+      }
+      
+      // Query filter status every hour or according to config
+      if ((millis() - this->lastFilterQuery_) >= 3600000) {  // 1 hour = 3600000 ms
+        this->queryFilterStatus();
       }
 
-      case StateIdle:
-        if (newSetting == true) {
-          this->setSpeed(newSpeed, newTimer);
-        } else {
-          // Existing fan query
-          if ((millis() - this->lastFanQuery_) > this->interval_) {
-            this->queryDevice();
-          }
-
-          // Add filter query every 10 minutes if sensors are connected
-          if (((millis() - this->lastFilterQuery_) > 600000) &&
-              (this->filter_remaining_sensor_ != nullptr || this->filter_runtime_sensor_ != nullptr)) {
-            this->queryFilterStatus();
-          }
-
-          // Add error query every 5 minutes if sensors are connected
-          if (((millis() - this->lastErrorQuery_) > 300000) &&
-              (this->error_count_sensor_ != nullptr || this->error_code_sensor_ != nullptr)) {
-            this->queryErrorStatus();
-          }
-        }
-        break;
-
+      // Query error status every 5 minutes
+      if ((millis() - this->lastErrorQuery_) >= 300000) {  // 5 minutes = 300000 ms
+        this->queryErrorStatus();
+      }
+      
+      // Check and apply any new speed settings
+      if (this->newSetting) {
+        this->setSpeed(this->newSpeed, this->newTimer);
+        this->newSetting = false;
+      }
+      break;
 
     default:
       break;
@@ -255,25 +262,22 @@ void ZehnderRF::queryErrorStatus(void) {
 
   ESP_LOGD(TAG, "Query error status");
 
-  this->lastErrorQuery_ = millis();  // Update time
+  (void) memset(this->_txFrame, 0, FAN_FRAMESIZE);  // Clear frame data
 
-  // Clear frame data
-  (void) memset(this->_txFrame, 0, FAN_FRAMESIZE);
-
-  // Build frame
-  pFrame->rx_type = this->config_.fan_main_unit_type;
+  pFrame->rx_type = this->config_.fan_main_unit_type;  // Main
   pFrame->rx_id = this->config_.fan_main_unit_id;
   pFrame->tx_type = this->config_.fan_my_device_type;
   pFrame->tx_id = this->config_.fan_my_device_id;
   pFrame->ttl = FAN_TTL;
-  pFrame->command = FAN_TYPE_QUERY_ERROR_STATUS;
-  pFrame->parameter_count = 0x00;  // No parameters
+  pFrame->command = FAN_TYPE_QUERY_ERROR_STATUS;  // Request error status
+  pFrame->parameter_count = 0x00;                // No params
 
   this->startTransmit(this->_txFrame, FAN_TX_RETRIES, [this]() {
     ESP_LOGW(TAG, "Error status query timeout");
     this->state_ = StateIdle;
   });
 
+  this->lastErrorQuery_ = millis();  // Update time
   this->state_ = StateWaitErrorStatusResponse;
 }
 
@@ -282,25 +286,22 @@ void ZehnderRF::queryFilterStatus(void) {
 
   ESP_LOGD(TAG, "Query filter status");
 
-  this->lastFilterQuery_ = millis();  // Update time
+  (void) memset(this->_txFrame, 0, FAN_FRAMESIZE);  // Clear frame data
 
-  // Clear frame data
-  (void) memset(this->_txFrame, 0, FAN_FRAMESIZE);
-
-  // Build frame
-  pFrame->rx_type = this->config_.fan_main_unit_type;
+  pFrame->rx_type = this->config_.fan_main_unit_type;  // Main
   pFrame->rx_id = this->config_.fan_main_unit_id;
   pFrame->tx_type = this->config_.fan_my_device_type;
   pFrame->tx_id = this->config_.fan_my_device_id;
   pFrame->ttl = FAN_TTL;
-  pFrame->command = FAN_TYPE_QUERY_FILTER_STATUS;
-  pFrame->parameter_count = 0x00;  // No parameters
+  pFrame->command = FAN_TYPE_QUERY_FILTER_STATUS;  // Request filter status
+  pFrame->parameter_count = 0x00;                  // No params
 
   this->startTransmit(this->_txFrame, FAN_TX_RETRIES, [this]() {
     ESP_LOGW(TAG, "Filter status query timeout");
     this->state_ = StateIdle;
   });
 
+  this->lastFilterQuery_ = millis();  // Update time
   this->state_ = StateWaitFilterStatusResponse;
 }
 
@@ -464,88 +465,96 @@ void ZehnderRF::rfHandleReceived(const uint8_t *const pData, const uint8_t dataL
       }
       break;
 
-      case StateWaitFilterStatusResponse:
-        if ((pResponse->rx_type == this->config_.fan_my_device_type) &&  // If type
-            (pResponse->rx_id == this->config_.fan_my_device_id)) {      // and id match, it is for us
-          switch (pResponse->command) {
-            case FAN_TYPE_FILTER_STATUS_RESPONSE: {
-              const RfPayloadFilterStatus* filterStatus =
-                  reinterpret_cast<const RfPayloadFilterStatus*>(&pResponse->payload);
+    case StateWaitFilterStatusResponse:
+      if ((pResponse->rx_type == this->config_.fan_my_device_type) &&  // If type
+          (pResponse->rx_id == this->config_.fan_my_device_id)) {      // and id match, it is for us
+        switch (pResponse->command) {
+          case FAN_TYPE_FILTER_STATUS_RESPONSE: {
+            const RfPayloadFilterStatus* filterStatus =
+                reinterpret_cast<const RfPayloadFilterStatus*>(&pResponse->payload);
 
-              ESP_LOGD(TAG, "Received filter status; total hours: %u, filter hours: %u, remaining: %u%%",
-                       filterStatus->totalRunHours, filterStatus->filterRunHours,
-                       filterStatus->filterPercentRemaining);
+            ESP_LOGD(TAG, "Received filter status; total hours: %u, filter hours: %u, remaining: %u%%",
+                     filterStatus->totalRunHours, filterStatus->filterRunHours,
+                     filterStatus->filterPercentRemaining);
 
-              this->rfComplete();
+            this->rfComplete();
 
-              // Update sensor values if you've added them
-              if (this->filter_remaining_sensor_ != nullptr) {
-                this->filter_remaining_sensor_->publish_state(filterStatus->filterPercentRemaining);
-              }
-              if (this->filter_runtime_sensor_ != nullptr) {
-                this->filter_runtime_sensor_->publish_state(filterStatus->filterRunHours);
-              }
-
-              this->state_ = StateIdle;
-              break;
+            // Update sensor values if you've added them
+            if (this->filter_remaining_sensor_ != nullptr) {
+              this->filter_remaining_sensor_->publish_state(filterStatus->filterPercentRemaining);
+            }
+            if (this->filter_runtime_sensor_ != nullptr) {
+              this->filter_runtime_sensor_->publish_state(filterStatus->filterRunHours);
             }
 
-            default:
-              ESP_LOGD(TAG, "Received unexpected frame; type 0x%02X from ID 0x%02X",
-                       pResponse->command, pResponse->tx_id);
-              break;
+            this->state_ = StateIdle;
+            break;
           }
-        } else {
-          ESP_LOGD(TAG, "Received frame from unknown device; type 0x%02X from ID 0x%02X type 0x%02X",
-                   pResponse->command, pResponse->tx_id, pResponse->tx_type);
+
+          default:
+            ESP_LOGD(TAG, "Received unexpected frame; type 0x%02X from ID 0x%02X",
+                     pResponse->command, pResponse->tx_id);
+            break;
         }
-        break;
+      } else {
+        ESP_LOGD(TAG, "Received frame from unknown device; type 0x%02X from ID 0x%02X type 0x%02X",
+                 pResponse->command, pResponse->tx_id, pResponse->tx_type);
+      }
+      break;
 
-      case StateWaitErrorStatusResponse:
-        if ((pResponse->rx_type == this->config_.fan_my_device_type) &&  // If type
-            (pResponse->rx_id == this->config_.fan_my_device_id)) {      // and id match, it is for us
-          switch (pResponse->command) {
-            case FAN_TYPE_ERROR_STATUS_RESPONSE: {
-              const RfPayloadErrorStatus* errorStatus =
-                  reinterpret_cast<const RfPayloadErrorStatus*>(&pResponse->payload);
+    case StateWaitErrorStatusResponse:
+      if ((pResponse->rx_type == this->config_.fan_my_device_type) &&  // If type
+          (pResponse->rx_id == this->config_.fan_my_device_id)) {      // and id match, it is for us
+        switch (pResponse->command) {
+          case FAN_TYPE_ERROR_STATUS_RESPONSE: {
+            const RfPayloadErrorStatus* errorStatus =
+                reinterpret_cast<const RfPayloadErrorStatus*>(&pResponse->payload);
 
-              ESP_LOGD(TAG, "Received error status; count: %u, severity: %u",
-                       errorStatus->errorCount, errorStatus->errorSeverity);
+            ESP_LOGD(TAG, "Received error status; error count: %u", errorStatus->errorCount);
 
-              this->rfComplete();
+            this->rfComplete();
 
-              // Update sensor values
-              if (this->error_count_sensor_ != nullptr) {
-                this->error_count_sensor_->publish_state(errorStatus->errorCount);
-              }
+            // Update error count sensor
+            if (this->error_count_sensor_ != nullptr) {
+              this->error_count_sensor_->publish_state(errorStatus->errorCount);
+            }
 
-              if (this->error_code_sensor_ != nullptr && errorStatus->errorCount > 0) {
-                char error_text[32];
-                snprintf(error_text, sizeof(error_text), "E%02d", errorStatus->errorCodes[0]);
-                for (int i = 1; i < errorStatus->errorCount && i < 5; i++) {
-                  char temp[8];
-                  snprintf(temp, sizeof(temp), ",E%02d", errorStatus->errorCodes[i]);
-                  strncat(error_text, temp, sizeof(error_text) - strlen(error_text) - 1);
+            // Build error code string if there are errors
+            if (this->error_code_sensor_ != nullptr) {
+              if (errorStatus->errorCount > 0) {
+                char errorString[32];
+                char* p = errorString;
+                
+                // Format error codes as comma-separated list
+                for (int i = 0; i < errorStatus->errorCount && i < 5; i++) {
+                  if (i > 0) {
+                    *p++ = ',';
+                    *p++ = ' ';
+                  }
+                  p += sprintf(p, "E%u", errorStatus->errorCodes[i]);
                 }
-                this->error_code_sensor_->publish_state(error_text);
-              } else if (this->error_code_sensor_ != nullptr) {
-                this->error_code_sensor_->publish_state("No Errors");
+                *p = '\0';
+                
+                this->error_code_sensor_->publish_state(errorString);
+              } else {
+                this->error_code_sensor_->publish_state("None");
               }
-
-              this->state_ = StateIdle;
-              break;
             }
 
-            default:
-              ESP_LOGD(TAG, "Received unexpected frame; type 0x%02X from ID 0x%02X",
-                       pResponse->command, pResponse->tx_id);
-              break;
+            this->state_ = StateIdle;
+            break;
           }
-        } else {
-          ESP_LOGD(TAG, "Received frame from unknown device; type 0x%02X from ID 0x%02X type 0x%02X",
-                   pResponse->command, pResponse->tx_id, pResponse->tx_type);
+
+          default:
+            ESP_LOGD(TAG, "Received unexpected frame; type 0x%02X from ID 0x%02X",
+                     pResponse->command, pResponse->tx_id);
+            break;
         }
-        break;
+      } else {
+        ESP_LOGD(TAG, "Received frame from unknown device; type 0x%02X from ID 0x%02X type 0x%02X",
+                 pResponse->command, pResponse->tx_id, pResponse->tx_type);
+      }
+      break;
 
     case StateWaitSetSpeedResponse:
       if ((pResponse->rx_type == this->config_.fan_my_device_type) &&  // If type
@@ -633,25 +642,22 @@ void ZehnderRF::queryDevice(void) {
 
   ESP_LOGD(TAG, "Query device");
 
-  this->lastFanQuery_ = millis();  // Update time
+  (void) memset(this->_txFrame, 0, FAN_FRAMESIZE);  // Clear frame data
 
-  // Clear frame data
-  (void) memset(this->_txFrame, 0, FAN_FRAMESIZE);
-
-  // Build frame
-  pFrame->rx_type = this->config_.fan_main_unit_type;
+  pFrame->rx_type = this->config_.fan_main_unit_type;  // Main
   pFrame->rx_id = this->config_.fan_main_unit_id;
   pFrame->tx_type = this->config_.fan_my_device_type;
   pFrame->tx_id = this->config_.fan_my_device_id;
   pFrame->ttl = FAN_TTL;
-  pFrame->command = FAN_TYPE_QUERY_DEVICE;
-  pFrame->parameter_count = 0x00;  // No parameters
+  pFrame->command = FAN_TYPE_QUERY_DEVICE;  // Request info
+  pFrame->parameter_count = 0x00;           // No params
 
   this->startTransmit(this->_txFrame, FAN_TX_RETRIES, [this]() {
-    ESP_LOGW(TAG, "Query Timeout");
+    ESP_LOGW(TAG, "Query timeout");
     this->state_ = StateIdle;
   });
 
+  this->lastFanQuery_ = millis();  // Update time
   this->state_ = StateWaitQueryResponse;
 }
 
