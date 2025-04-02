@@ -14,10 +14,10 @@ esp32:
 
 # Enable logging
 logger:
-  level: VERY_VERBOSE # Set global level to VERY_VERBOSE
+  level: DEBUG # Set global level to DEBUG
   logs:
-    zehnder: VERY_VERBOSE
-    nrf905: VERY_VERBOSE
+    zehnder: DEBUG
+    nrf905: DEBUG
 
 preferences:
   flash_write_interval: 1h
