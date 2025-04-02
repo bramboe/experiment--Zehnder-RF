@@ -269,16 +269,16 @@ spi:
   mosi_pin: GPIO13
   miso_pin: GPIO12
 
-# nRF905 config with more robust initialization
-nrf905:
-  id: "nrf905_rf"
-  cs_pin: GPIO15
-  cd_pin: GPIO33
-  ce_pin: GPIO27
-  pwr_pin: GPIO26
-  txen_pin: GPIO25
-  # am_pin: GPIO32
-  # dr_pin: GPIO35
+# nRF905 config - TEMPORARILY COMMENTED OUT FOR STABILITY TEST
+# nrf905:
+#   id: "nrf905_rf"
+#   cs_pin: GPIO15
+#   cd_pin: GPIO33
+#   ce_pin: GPIO27
+#   pwr_pin: GPIO26
+#   txen_pin: GPIO25
+#   # am_pin: GPIO32
+#   # dr_pin: GPIO35
 
 # Ensure nrf905 is fully initialized with a longer delay
 interval:
@@ -286,41 +286,41 @@ interval:
     then:
       - logger.log:
           level: INFO
-          format: "nRF905 initialization check"
+          format: "nRF905 initialization check - Component Disabled"
 
-# The FAN controller
-fan:
-  - platform: zehnder
-    id: ${device_id}_ventilation
-    name: "${device_name} Ventilation"
-    nrf905: nrf905_rf
-    update_interval: "15s"
-    # Added filter and error sensors to capture all Zehnder information
-    filter_remaining:
-      name: "${device_name} Filter Remaining"
-      id: ${device_id}_filter_remaining
-    filter_runtime:
-      name: "${device_name} Filter Runtime"
-      id: ${device_id}_filter_runtime
-    error_count:
-      name: "${device_name} Error Count"
-      id: ${device_id}_error_count
-    error_code:
-      name: "${device_name} Error Code"
-      id: ${device_id}_error_code
-    on_speed_set:
-      - sensor.template.publish:
-          id: ${device_id}_ventilation_percentage
-          state: !lambda 'return ${device_id}_ventilation->voltage;'
-      - binary_sensor.template.publish:
-          id: ${device_id}_timer
-          state: !lambda 'return ${device_id}_ventilation->timer;'
-      - text_sensor.template.publish:
-          id: ${device_id}_ventilation_mode
-          state: !lambda 'switch (${device_id}_ventilation->speed) {
-                             case 1: return "Low";
-                             case 2: return "Medium";
-                             case 3: return "High";
-                             case 4: return "Max";
-                             default: return "Auto";
-                         }'
+# The FAN controller - TEMPORARILY COMMENTED OUT FOR STABILITY TEST
+# fan:
+#   - platform: zehnder
+#     id: ${device_id}_ventilation
+#     name: "${device_name} Ventilation"
+#     nrf905: nrf905_rf
+#     update_interval: "15s"
+#     # Added filter and error sensors to capture all Zehnder information
+#     filter_remaining:
+#       name: "${device_name} Filter Remaining"
+#       id: ${device_id}_filter_remaining
+#     filter_runtime:
+#       name: "${device_name} Filter Runtime"
+#       id: ${device_id}_filter_runtime
+#     error_count:
+#       name: "${device_name} Error Count"
+#       id: ${device_id}_error_count
+#     error_code:
+#       name: "${device_name} Error Code"
+#       id: ${device_id}_error_code
+#     on_speed_set:
+#       - sensor.template.publish:
+#           id: ${device_id}_ventilation_percentage
+#           state: !lambda 'return ${device_id}_ventilation->voltage;'
+#       - binary_sensor.template.publish:
+#           id: ${device_id}_timer
+#           state: !lambda 'return ${device_id}_ventilation->timer;'
+#       - text_sensor.template.publish:
+#           id: ${device_id}_ventilation_mode
+#           state: !lambda 'switch (${device_id}_ventilation->speed) {
+#                              case 1: return "Low";
+#                              case 2: return "Medium";
+#                              case 3: return "High";
+#                              case 4: return "Max";
+#                              default: return "Auto";
+#                          }'
