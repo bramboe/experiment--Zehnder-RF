@@ -194,21 +194,24 @@ void ZehnderRF::loop(void) {
         if ((this->config_.fan_networkId == 0x00000000) || (this->config_.fan_my_device_type == 0) ||
             (this->config_.fan_my_device_id == 0) || (this->config_.fan_main_unit_type == 0) ||
             (this->config_.fan_main_unit_id == 0)) {
-          ESP_LOGD(TAG, "Invalid config, start paring");
-
-          this->state_ = StateStartDiscovery;
+          ESP_LOGW(TAG, "Invalid config / Not paired. Please trigger pairing manually (using Reset Pairing button).");
+          // Stay idle until pairing is triggered manually. Do not start discovery automatically.
+          this->state_ = StateIdle; 
         } else {
-          ESP_LOGD(TAG, "Config data valid, start polling");
+          ESP_LOGD(TAG, "Config data valid, setting network ID and preparing for communication.");
 
           rfConfig = this->rf_->getConfig();
           rfConfig.rx_address = this->config_.fan_networkId;
           this->rf_->updateConfig(&rfConfig, NULL);
           this->rf_->writeTxAddress(this->config_.fan_networkId, NULL);
+          // Set mode to receive based on the valid config
+          this->rf_->setMode(nrf905::Receive);
 
           this->state_ = StateIdle;
-          this->lastFanQuery_ = 0;  // Force immediate query on startup
-          this->lastFilterQuery_ = 0; // Force immediate filter query
-          this->lastErrorQuery_ = 0;  // Force immediate error query
+          // Reset query timers - Note: periodic queries are currently commented out
+          this->lastFanQuery_ = 0;  
+          this->lastFilterQuery_ = 0; 
+          this->lastErrorQuery_ = 0;  
         }
       }
       break;
