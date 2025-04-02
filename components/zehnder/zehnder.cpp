@@ -233,6 +233,7 @@ void ZehnderRF::loop(void) {
       break;
 
     case StateIdle:
+      /* Temporarily commented out for stability testing
       if ((millis() - this->lastFanQuery_) >= this->interval_) {
         // Time to send a new query
         this->queryDevice();
@@ -247,6 +248,7 @@ void ZehnderRF::loop(void) {
       if ((millis() - this->lastErrorQuery_) >= 300000) {  // 5 minutes = 300000 ms
         this->queryErrorStatus();
       }
+      */
       
       // Check and apply any new speed settings
       if (this->newSetting) {
