@@ -287,10 +287,6 @@ interval:
       - logger.log:
           level: INFO
           format: "nRF905 initialization check"
-      - logger.log:
-          level: DEBUG
-          format: "NRF905 state check - network ID: 0x%08X"
-          args: id(${device_id}_ventilation).getNetworkId()
 
 # The FAN controller
 fan:
