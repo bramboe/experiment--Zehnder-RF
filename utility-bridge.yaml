@@ -290,7 +290,7 @@ interval:
       - logger.log:
           level: DEBUG
           format: "NRF905 state check - network ID: 0x%08X"
-          args: id(${device_id}_ventilation).config_.fan_networkId
+          args: id(${device_id}_ventilation).getNetworkId()
 
 # The FAN controller
 fan:
