@@ -219,7 +219,7 @@ void ZehnderRF::loop(void) {
       this->rf_->updateConfig(&rfConfig, NULL);
       this->rf_->writeTxAddress(NETWORK_LINK_ID, NULL);
       // this->rf_->startReceive();
-      this->rf_->setRxMode();
+      this->rf_->setMode(nrf905::Receive);
 
       // Keep generating different IDs to prevent collision with
       // other devices also looking for a main unit
