@@ -225,19 +225,26 @@ void ZehnderRF::loop(void) {
         if (newSetting == true) {
           this->setSpeed(newSpeed, newTimer);
         } else {
-          // Prioritize Error Query (every 5 minutes)
+          bool query_sent = false; // Flag to ensure only one query per cycle
+
+          // Check Error Query first (every 5 minutes)
           if (((millis() - this->lastErrorQuery_) > 300000) &&
               (this->error_count_sensor_ != nullptr || this->error_code_sensor_ != nullptr)) {
             this->queryErrorStatus();
+            query_sent = true; // Mark that a query was sent
           }
-          // Else, check Filter Query (every 10 minutes)
-          else if (((millis() - this->lastFilterQuery_) > 600000) &&
+          
+          // Check Filter Query (every 10 minutes), only if no error query was sent
+          if (!query_sent && ((millis() - this->lastFilterQuery_) > 600000) &&
                    (this->filter_remaining_sensor_ != nullptr || this->filter_runtime_sensor_ != nullptr)) {
             this->queryFilterStatus();
+            query_sent = true; // Mark that a query was sent
           }
-          // Else, check standard Fan Query (every 'interval_' ms)
-          else if ((millis() - this->lastFanQuery_) > this->interval_) {
+
+          // Check standard Fan Query (every 'interval_' ms), only if no diagnostic query was sent
+          if (!query_sent && ((millis() - this->lastFanQuery_) > this->interval_)) {
             this->queryDevice();
+            // query_sent = true; // Not strictly needed as it's the last check
           }
         }
         break;
