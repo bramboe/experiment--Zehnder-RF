@@ -225,21 +225,19 @@ void ZehnderRF::loop(void) {
         if (newSetting == true) {
           this->setSpeed(newSpeed, newTimer);
         } else {
-          // Existing fan query
-          if ((millis() - this->lastFanQuery_) > this->interval_) {
-            this->queryDevice();
-          }
-
-          // Add filter query every 10 minutes if sensors are connected
-          if (((millis() - this->lastFilterQuery_) > 600000) &&
-              (this->filter_remaining_sensor_ != nullptr || this->filter_runtime_sensor_ != nullptr)) {
-            this->queryFilterStatus();
-          }
-
-          // Add error query every 5 minutes if sensors are connected
+          // Prioritize Error Query (every 5 minutes)
           if (((millis() - this->lastErrorQuery_) > 300000) &&
               (this->error_count_sensor_ != nullptr || this->error_code_sensor_ != nullptr)) {
             this->queryErrorStatus();
+          }
+          // Else, check Filter Query (every 10 minutes)
+          else if (((millis() - this->lastFilterQuery_) > 600000) &&
+                   (this->filter_remaining_sensor_ != nullptr || this->filter_runtime_sensor_ != nullptr)) {
+            this->queryFilterStatus();
+          }
+          // Else, check standard Fan Query (every 'interval_' ms)
+          else if ((millis() - this->lastFanQuery_) > this->interval_) {
+            this->queryDevice();
           }
         }
         break;
@@ -305,6 +303,13 @@ void ZehnderRF::queryFilterStatus(void) {
 }
 
 void ZehnderRF::rfHandleReceived(const uint8_t *const pData, const uint8_t dataLength) {
+  ESP_LOGV("zehnder_raw", "Received RF Packet (%d bytes):", dataLength);
+  std::string bytes_str;
+  for (int i = 0; i < dataLength; i++) {
+    bytes_str += esphome::str_sprintf(" %02X", pData[i]);
+  }
+  ESP_LOGV("zehnder_raw", "  Data:%s", bytes_str.c_str());
+
   const RfFrame *const pResponse = (RfFrame *) pData;
   RfFrame *const pTxFrame = (RfFrame *) this->_txFrame;  // frame helper
   nrf905::Config rfConfig;
