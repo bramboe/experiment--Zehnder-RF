@@ -1,7 +1,7 @@
 substitutions:
-  hostname: zehnder-comfofan
-  device_name: Zehnder ComfoFan
-  device_id: zehnder_comfofan
+  hostname: zehnder-experiment
+  device_name: Zehnder Experiment
+  device_id: zehnder_experiment
 
 esphome:
   name: ${hostname}
@@ -14,10 +14,10 @@ esp32:
 
 # Enable logging
 logger:
-  level: DEBUG # Set global level to DEBUG
+  level: VERBOSE
   logs:
-    zehnder: DEBUG
-    nrf905: DEBUG
+    zehnder: VERBOSE
+    nrf905: VERBOSE
 
 preferences:
   flash_write_interval: 1h
@@ -25,7 +25,7 @@ preferences:
 # Enable Home Assistant API
 api:
   encryption:
-    key: !secret "zehnder_comfofan_api_key"
+    key: !secret "zehnder_experiment_api_key"
   services:
     - service: set_speed
       variables:
@@ -272,6 +272,27 @@ fan:
     name: "${device_name} Ventilation"
     nrf905: nrf905_rf
     update_interval: "15s"
+    # Define the sensors directly under the fan platform
+    filter_remaining:
+      name: "${device_name} Filter Remaining"
+      unit_of_measurement: '%'
+      icon: mdi:filter-variant
+      accuracy_decimals: 0
+      state_class: measurement
+    filter_runtime:
+      name: "${device_name} Filter Runtime"
+      unit_of_measurement: 'h'
+      icon: mdi:clock-outline
+      accuracy_decimals: 0
+      state_class: total_increasing
+    error_count:
+      name: "${device_name} Error Count"
+      icon: mdi:alert-circle-outline
+      accuracy_decimals: 0
+      state_class: measurement
+    error_code:
+      name: "${device_name} Error Code"
+      icon: mdi:alert-outline
     on_speed_set:
       - sensor.template.publish:
           id: ${device_id}_ventilation_percentage
