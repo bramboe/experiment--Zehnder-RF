@@ -235,15 +235,15 @@ button:
             ${device_id}_ventilation->setSpeed(4, 60);
 
 # Load external components
-external_components:
-  - source: github://bramboe/experiment--Zehnder-RF
-    components: [ nrf905, zehnder ]
-    refresh: 0s  # Disable auto refresh to ensure version stability
+# external_components:
+#  - source: github://bramboe/experiment--Zehnder-RF
+#    components: [ nrf905, zehnder ]
+#    refresh: 0s  # Disable auto refresh to ensure version stability
 
 # Use local components instead
-# components:
-#  - source: ./components # Path relative to the YAML file
-#    components: [ nrf905, zehnder ] # Source both locally
+components:
+  - source: ./components # Path relative to the YAML file
+    components: [ nrf905, zehnder ] # Source both locally
 
 # SPI
 spi:
