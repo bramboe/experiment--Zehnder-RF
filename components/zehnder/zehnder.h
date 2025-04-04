@@ -159,7 +159,6 @@ class ZehnderRF : public Component, public fan::Fan {
  protected:
   // Core logic methods
   void queryDevice(void);
-  void setSpeed(const uint8_t speed, const uint8_t timer = 0);
   uint8_t createDeviceID(void);
   std::string speedToMode_(uint8_t speed_preset);
 
