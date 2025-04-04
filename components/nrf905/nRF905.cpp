@@ -104,7 +104,7 @@ void nRF905::loop() {
 
       // Read data
       this->readRxPayload(buffer, NRF905_MAX_FRAMESIZE);
-      ESP_LOGV(TAG, "RX Complete: %s", hexArrayToStr(buffer, NRF905_MAX_FRAMESIZE));
+      ESP_LOGD(TAG, "RX Complete: %s", hexArrayToStr(buffer, NRF905_MAX_FRAMESIZE));
 
       if (this->onRxComplete != NULL) {
         this->onRxComplete(buffer, NRF905_MAX_FRAMESIZE);
