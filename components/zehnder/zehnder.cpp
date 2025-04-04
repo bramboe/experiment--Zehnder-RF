@@ -93,8 +93,14 @@ void ZehnderRF::setup() {
 
   uint32_t hash = fnv1_hash("zehnderrf");
   this->pref_ = global_preferences->make_preference<Config>(hash, true);
-  if (this->pref_.load(&this->config_)) {
-    ESP_LOGD(TAG, "Config load ok");
+  bool loaded = this->pref_.load(&this->config_);
+  if (loaded) {
+    ESP_LOGD(TAG, "Config load OK. NetworkId: 0x%08X, MyDeviceId: 0x%02X, MainUnitId: 0x%02X",
+             this->config_.fan_networkId, this->config_.fan_my_device_id, this->config_.fan_main_unit_id);
+  } else {
+    ESP_LOGW(TAG, "Config load FAILED.");
+    // Ensure config is zeroed if load failed, otherwise startup check might pass incorrectly
+    memset(&this->config_, 0, sizeof(Config)); 
   }
 
   // Set nRF905 config
@@ -428,8 +434,14 @@ void ZehnderRF::rfHandleReceived(const uint8_t *const pData, const uint8_t dataL
 
             this->rfComplete();
 
-            ESP_LOGD(TAG, "Saving pairing config");
-            this->pref_.save(&this->config_);
+            ESP_LOGD(TAG, "Attempting to save pairing config: NetworkId: 0x%08X, MyDeviceId: 0x%02X, MainUnitId: 0x%02X",
+                     this->config_.fan_networkId, this->config_.fan_my_device_id, this->config_.fan_main_unit_id);
+            bool saved = this->pref_.save(&this->config_);
+            if (saved) {
+              ESP_LOGD(TAG, "Saving pairing config SUCCEEDED.");
+            } else {
+              ESP_LOGW(TAG, "Saving pairing config FAILED.");
+            }
 
             this->state_ = StateIdle;
           } else {
