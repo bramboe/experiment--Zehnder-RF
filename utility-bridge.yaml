@@ -244,7 +244,7 @@ button:
 external_components:
   - source:
       type: local
-      path: esphome/components
+      path: components
     components: [ nrf905, zehnder ]
 
 # SPI
